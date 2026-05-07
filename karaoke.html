@@ -82,7 +82,7 @@ What the hell am I doing (C)here I don't belong (Cm↓) here
     <p class="hint">
       Format: put chords inline in <strong>(parentheses)</strong> exactly where they fall in the lyrics.<br>
       Section markers go in <strong>[square brackets]</strong> on their own line or at the start of a line.<br>
-      Each chord = one bar. On chord-only lines, a space after a chord extends it by one extra bar (capped at +1).
+      Each chord = one bar. BPM controls how long each bar lasts.
     </p>
   </div>
 
@@ -121,35 +121,17 @@ function parseSong(raw) {
   const lines = raw.split('\n');
   const result = [];
   for (let li = 0; li < lines.length; li++) {
-    let line = lines[li];
-    if (!line.trim()) continue;
+    let line = lines[li].trim();
+    if (!line) continue;
     const secMatch = line.match(/^\[([^\]]+)\](.*)/);
     if (secMatch) {
       result.push({ type:'section', raw: secMatch[1].trim() });
       const rest = secMatch[2].trim();
       if (rest) result.push({ type:'lyric', raw: rest });
     } else {
-      const hasText = line.replace(/\([^)]+\)/g,'').replace(/[|\s]/g,'').length > 0;
+      const hasText = line.replace(/\([^)]+\)/g,'').trim().length > 0;
       result.push({ type: hasText ? 'lyric' : 'instr', raw: line });
     }
-  }
-  return result;
-}
-
-function instrChordBars(raw) {
-  const re = /\(([^)]+)\)/g;
-  const chords = [];
-  let m;
-  while ((m = re.exec(raw)) !== null) {
-    chords.push({ label: m[1], end: m.index + m[0].length });
-  }
-  const result = [];
-  for (let i = 0; i < chords.length; i++) {
-    const afterEnd = chords[i].end;
-    const beforeNext = i + 1 < chords.length ? chords[i+1].end - chords[i+1].label.length - 2 : raw.length;
-    const between = raw.slice(afterEnd, beforeNext);
-    const hasGap = /[^\S]|[|]/.test(between);
-    result.push({ label: chords[i].label, bars: hasGap ? 2 : 1 });
   }
   return result;
 }
@@ -157,23 +139,12 @@ function instrChordBars(raw) {
 function buildSong(lines, bpm, bpb) {
   const barDur = (60 / bpm) * bpb;
   const flat = [];
-
   for (let li = 0; li < lines.length; li++) {
     const ln = lines[li];
     if (ln.type === 'section') {
       flat.push({ kind:'section', val: ln.raw, li });
       continue;
     }
-
-    if (ln.type === 'instr') {
-      const chords = instrChordBars(ln.raw);
-      for (const c of chords) {
-        flat.push({ kind:'chord', val: c.label, li, instrBars: c.bars });
-      }
-      flat.push({ kind:'newline', li });
-      continue;
-    }
-
     const re = /\(([^)]+)\)/g;
     let last = 0, m;
     while ((m = re.exec(ln.raw)) !== null) {
@@ -184,29 +155,19 @@ function buildSong(lines, bpm, bpb) {
     if (last < ln.raw.length) flat.push({ kind:'text', val: ln.raw.slice(last), li });
     flat.push({ kind:'newline', li });
   }
-
-  let t = 0;
-  let lastBar = -1;
-  let lastBarEndT = 0;
-
+  let bar = 0, lastBar = -1;
   for (const tok of flat) {
     if (tok.kind === 'chord') {
-      tok.barIdx = lastBar + 1;
-      tok.startT = t;
-      const bars = tok.instrBars || 1;
-      tok.endT = t + bars * barDur;
-      lastBar = tok.barIdx;
-      lastBarEndT = tok.endT;
-      t = tok.endT;
+      tok.barIdx = bar;
+      tok.startT = bar * barDur;
+      tok.endT = tok.startT + barDur;
+      lastBar = bar;
+      bar++;
     } else if (tok.kind === 'text') {
       tok.barIdx = lastBar;
-      tok.startT = lastBar >= 0 ? flat.filter(x => x.kind==='chord' && x.barIdx===lastBar)[0]?.startT ?? 0 : 0;
-      tok.endT = lastBarEndT;
     }
   }
-
-  const totalDuration = t;
-  return { flat, totalDuration, barDur };
+  return { flat, totalDuration: bar * barDur, barDur };
 }
 
 function buildDOM() {
@@ -229,8 +190,7 @@ function buildDOM() {
       continue;
     }
     const sp = document.createElement('span');
-    sp.dataset.start = tok.startT;
-    sp.dataset.end = tok.endT;
+    sp.dataset.bar = tok.barIdx;
     if (tok.kind === 'chord') {
       sp.className = 'kchord';
       sp.textContent = '(' + tok.val + ')';
@@ -243,19 +203,17 @@ function buildDOM() {
 }
 
 function render(elapsed) {
+  const sheet = document.getElementById('ksheet');
   document.getElementById('ktimeDisp').textContent = fmt(elapsed) + ' / ' + fmt(song.totalDuration);
   document.getElementById('kprogressBar').style.width = Math.min(100, elapsed / song.totalDuration * 100).toFixed(2) + '%';
-  const sheet = document.getElementById('ksheet');
-  sheet.querySelectorAll('.kchord, .ktxt').forEach(el => {
-    const s = +el.dataset.start, e = +el.dataset.end;
-    const active = elapsed >= s && elapsed < e;
-    const done = elapsed >= e;
-    if (el.classList.contains('kchord')) {
-      el.classList.toggle('chord-active', active);
-    } else {
-      el.classList.toggle('chunk-active', active);
-      el.classList.toggle('chunk-done', done);
-    }
+  const activeBar = elapsed < song.totalDuration ? Math.floor(elapsed / song.barDur) : -1;
+  sheet.querySelectorAll('.kchord').forEach(el => {
+    el.classList.toggle('chord-active', +el.dataset.bar === activeBar);
+  });
+  sheet.querySelectorAll('.ktxt').forEach(el => {
+    const b = +el.dataset.bar;
+    el.classList.toggle('chunk-active', b === activeBar);
+    el.classList.toggle('chunk-done', b >= 0 && b < activeBar);
   });
 }
 
@@ -294,13 +252,15 @@ window.togglePlay = function() {
     stopPlayback();
     document.getElementById('kbtnPlay').textContent = '\u25B6 Resume';
   } else {
-    if (document.getElementById('kbtnPlay').textContent.includes('Replay')) pausedAt = 0;
+    const btn = document.getElementById('kbtnPlay');
+    if (btn.textContent.includes('Replay')) pausedAt = 0;
     startPlayback();
   }
 };
 
 window.stopPlay = function() {
-  stopPlayback(); pausedAt = 0;
+  stopPlayback();
+  pausedAt = 0;
   document.getElementById('kbtnPlay').textContent = '\u25B6 Play';
   if (song) render(0);
 };
@@ -329,7 +289,7 @@ window.loadSong = function() {
   const errEl = document.getElementById('parse-error');
   if (!raw.trim()) { errEl.textContent = 'Please enter some song lyrics with chords.'; return; }
   parsedLines = parseSong(raw);
-  const chords = parsedLines.reduce((n, ln) => n + ((ln.raw||'').match(/\([^)]+\)/g)||[]).length, 0);
+  const chords = parsedLines.reduce((n, ln) => n + (ln.raw || '').split(/\([^)]+\)/).length - 1, 0);
   if (chords === 0) { errEl.textContent = 'No chords found. Add chords like (G) or (Am) inline in the lyrics.'; return; }
   errEl.textContent = '';
   bpm = parseInt(document.getElementById('bpm-input').value) || 92;
@@ -339,17 +299,19 @@ window.loadSong = function() {
   document.getElementById('kbpb').value = bpb;
   document.getElementById('song-title').textContent = document.getElementById('title-input').value;
   song = buildSong(parsedLines, bpm, bpb);
-  pausedAt = 0; stopPlayback();
+  pausedAt = 0;
+  stopPlayback();
   document.getElementById('kbtnPlay').textContent = '\u25B6 Play';
-  buildDOM(); render(0);
+  buildDOM();
+  render(0);
   showTab('play');
 };
 
 window.showTab = function(tab) {
-  document.getElementById('editor-pane').classList.toggle('visible', tab==='edit');
-  document.getElementById('player-pane').classList.toggle('visible', tab==='play');
-  document.getElementById('tab-edit').classList.toggle('active', tab==='edit');
-  document.getElementById('tab-play').classList.toggle('active', tab==='play');
+  document.getElementById('editor-pane').classList.toggle('visible', tab === 'edit');
+  document.getElementById('player-pane').classList.toggle('visible', tab === 'play');
+  document.getElementById('tab-edit').classList.toggle('active', tab === 'edit');
+  document.getElementById('tab-play').classList.toggle('active', tab === 'play');
 };
 
 loadSong();
