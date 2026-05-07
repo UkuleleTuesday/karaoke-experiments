@@ -1,9 +1,20 @@
 
 <style>
 #kapp { padding: 1rem 0; font-family: var(--font-sans); }
+#views { display:flex; gap:8px; margin-bottom:1rem; }
+#views button { font-size:13px; padding:5px 14px; }
+#views button.active { background:var(--color-background-secondary); font-weight:500; }
+#editor-pane, #player-pane { display:none; }
+#editor-pane.visible, #player-pane.visible { display:block; }
+#song-input { width:100%; box-sizing:border-box; font-family:var(--font-mono); font-size:13px; line-height:1.7; min-height:320px; padding:12px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:var(--color-background-secondary); color:var(--color-text-primary); resize:vertical; }
+#song-input:focus { outline:none; border-color:var(--color-border-primary); }
+.editor-row { display:flex; gap:10px; align-items:center; margin-bottom:1rem; flex-wrap:wrap; }
+.editor-row label { font-size:13px; color:var(--color-text-secondary); }
+#parse-btn { font-size:13px; padding:6px 18px; margin-left:auto; }
 #kcontrols { display:flex; align-items:center; gap:12px; margin-bottom:1.25rem; flex-wrap:wrap; }
 #kcontrols label { font-size:13px; color:var(--color-text-secondary); }
 #kbpmVal { font-size:13px; font-weight:500; min-width:36px; }
+#song-title { font-size:18px; font-weight:500; color:var(--color-text-primary); margin-bottom:1rem; }
 #ksheet { font-size:15px; line-height:2.2; background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:1.25rem 1.5rem; }
 .kline { margin:0 -4px; padding:0 4px; }
 .kline.section-tag { font-size:12px; color:var(--color-text-tertiary); font-style:italic; margin-top:0.4rem; line-height:1.8; }
@@ -16,143 +27,168 @@
 #kprogressBar { height:100%; background:#D85A30; border-radius:2px; width:0%; }
 #kbtnRow { display:flex; gap:8px; margin-top:0.75rem; align-items:center; }
 #ktimeDisp { font-size:12px; color:var(--color-text-tertiary); margin-left:auto; }
+#parse-error { font-size:13px; color:var(--color-text-danger); margin-top:6px; min-height:18px; }
+.hint { font-size:12px; color:var(--color-text-tertiary); margin-top:8px; line-height:1.6; }
 </style>
 
-<h2 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Full-page karaoke with evenly-spaced BPM chunk highlighting</h2>
+<h2 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Karaoke player — paste any chord-annotated song tab</h2>
 
 <div id="kapp">
-  <div id="kcontrols">
-    <label for="kbpmSlider">BPM</label>
-    <input type="range" id="kbpmSlider" min="40" max="200" value="92" step="1" style="width:110px">
-    <span id="kbpmVal">92</span>
-    <label style="margin-left:8px;">Beats/bar</label>
-    <select id="kbpb" style="font-size:13px;padding:4px 8px"><option value="4" selected>4</option><option value="3">3</option></select>
+  <div id="views">
+    <button id="tab-edit" class="active" onclick="showTab('edit')"><i class="ti ti-edit" aria-hidden="true"></i> Edit song</button>
+    <button id="tab-play" onclick="showTab('play')"><i class="ti ti-player-play" aria-hidden="true"></i> Play</button>
   </div>
-  <div id="ksheet"></div>
-  <div id="kprogress"><div id="kprogressBar"></div></div>
-  <div id="kbtnRow">
-    <button id="kbtnPlay">&#9654; Play</button>
-    <button id="kbtnStop">&#9632; Stop</button>
-    <span id="ktimeDisp">0:00</span>
+
+  <div id="editor-pane" class="visible">
+    <div class="editor-row">
+      <label for="title-input">Title</label>
+      <input type="text" id="title-input" value="Creep — Radiohead" style="font-size:13px;padding:5px 10px;width:220px;">
+      <label style="margin-left:12px;">BPM</label>
+      <input type="number" id="bpm-input" value="92" min="20" max="300" style="font-size:13px;padding:5px 8px;width:64px;">
+      <label style="margin-left:8px;">Beats/bar</label>
+      <select id="bpb-input" style="font-size:13px;padding:5px 8px;">
+        <option value="4" selected>4</option>
+        <option value="3">3</option>
+      </select>
+      <button id="parse-btn" onclick="loadSong()"><i class="ti ti-player-play" aria-hidden="true"></i> Load &amp; play</button>
+    </div>
+    <textarea id="song-input" spellcheck="false">(G) (G) (B) (B) | (C) (C) (Cm) (Cm)
+When you were here before (G) couldn't look you in the eyes (B)
+You're just like an an(C)gel your skin makes me cry (Cm)
+You float like a fea(G)ther in a beautiful world (B)
+I wish I was spe(C)cial you're so fucking spe(Cm)cial (Cm↓↓)(N/C) (Cm↓↓)(N/C)
+[loud, overdriven]
+But I'm a creep (G) I'm a weir(B)do
+What the hell am I doing (C)here I don't belong (Cm) here (Cm↓)
+[quiet]
+I don't care if it hurts (G) I wanna have control (B)
+I want a perfect bo(C)dy I want a perfect soul (Cm)
+I want you to no(G)tice when I'm not around (B)
+You're so fucking spe(C)cial I wish I was spe(Cm)cial (Cm↓↓)(N/C) (Cm↓↓)(N/C)
+[loud, overdriven]
+But I'm a creep (G) I'm a weir(B)do
+What the hell am I doing (C)here I don't belong (Cm) here oh-oh oh-oh
+(G)She's running out the door (B)
+(C)She's running out she (Cm)run run run
+Ruuu(G)uuu(B)uuun
+(C)Ruuu(Cm↓)n
+[quiet, light drums til end]
+Whatever makes you hap(G)py whatever you want (B)
+You're so fucking spe(C)cial I wish I was spe(Cm)cial
+But I'm a creep (G) I'm a weir(B)do
+What the hell am I doing (C)here I don't belong (Cm↓) here
+[no drums, slowdown] I don't belong (G↓) here</textarea>
+    <div id="parse-error"></div>
+    <p class="hint">
+      Format: put chords inline in <strong>(parentheses)</strong> exactly where they fall in the lyrics.<br>
+      Section markers go in <strong>[square brackets]</strong> on their own line or at the start of a line.<br>
+      Each chord = one bar. BPM controls how long each bar lasts.
+    </p>
+  </div>
+
+  <div id="player-pane">
+    <div id="kcontrols">
+      <label>BPM</label>
+      <input type="range" id="kbpmSlider" min="40" max="200" value="92" step="1" style="width:110px" oninput="onBpmSlide(this)">
+      <span id="kbpmVal">92</span>
+      <label style="margin-left:8px;">Beats/bar</label>
+      <select id="kbpb" style="font-size:13px;padding:4px 8px" onchange="onBpbChange(this)">
+        <option value="4" selected>4</option>
+        <option value="3">3</option>
+      </select>
+      <button style="margin-left:auto;font-size:12px;padding:4px 12px;" onclick="showTab('edit')"><i class="ti ti-edit" aria-hidden="true"></i> Edit</button>
+    </div>
+    <div id="song-title"></div>
+    <div id="ksheet"></div>
+    <div id="kprogress"><div id="kprogressBar"></div></div>
+    <div id="kbtnRow">
+      <button id="kbtnPlay" onclick="togglePlay()">&#9654; Play</button>
+      <button onclick="stopPlay()">&#9632; Stop</button>
+      <span id="ktimeDisp">0:00</span>
+    </div>
   </div>
 </div>
 
 <script>
 (function(){
 
-const RAW_LINES = [
-  { type:'instr',  raw:'(G) (G) (B) (B) | (C) (C) (Cm) (Cm)' },
-  { type:'lyric',  raw:'When you were here before (G) couldn\'t look you in the eyes (B)' },
-  { type:'lyric',  raw:'You\'re just like an an(C)gel your skin makes me cry (Cm)' },
-  { type:'lyric',  raw:'You float like a fea(G)ther in a beautiful world (B)' },
-  { type:'lyric',  raw:'I wish I was spe(C)cial you\'re so fucking spe(Cm)cial (Cm\u2193\u2193)(N/C) (Cm\u2193\u2193)(N/C)' },
-  { type:'section',raw:'loud, overdriven' },
-  { type:'lyric',  raw:'But I\'m a creep (G) I\'m a weir(B)do' },
-  { type:'lyric',  raw:'What the hell am I doing (C)here I don\'t belong (Cm) here (Cm\u2193)' },
-  { type:'section',raw:'quiet' },
-  { type:'lyric',  raw:'I don\'t care if it hurts (G) I wanna have control (B)' },
-  { type:'lyric',  raw:'I want a perfect bo(C)dy I want a perfect soul (Cm)' },
-  { type:'lyric',  raw:'I want you to no(G)tice when I\'m not around (B)' },
-  { type:'lyric',  raw:'You\'re so fucking spe(C)cial I wish I was spe(Cm)cial (Cm\u2193\u2193)(N/C) (Cm\u2193\u2193)(N/C)' },
-  { type:'section',raw:'loud, overdriven' },
-  { type:'lyric',  raw:'But I\'m a creep (G) I\'m a weir(B)do' },
-  { type:'lyric',  raw:'What the hell am I doing (C)here I don\'t belong (Cm) here oh-oh oh-oh' },
-  { type:'lyric',  raw:'(G)She\'s running out the door (B)' },
-  { type:'lyric',  raw:'(C)She\'s running out she (Cm)run run run' },
-  { type:'lyric',  raw:'Ruuu(G)uuu(B)uuun' },
-  { type:'lyric',  raw:'(C)Ruuu(Cm\u2193)n' },
-  { type:'section',raw:'quiet, light drums til end' },
-  { type:'lyric',  raw:'Whatever makes you hap(G)py whatever you want (B)' },
-  { type:'lyric',  raw:'You\'re so fucking spe(C)cial I wish I was spe(Cm)cial' },
-  { type:'lyric',  raw:'But I\'m a creep (G) I\'m a weir(B)do' },
-  { type:'lyric',  raw:'What the hell am I doing (C)here I don\'t belong (Cm\u2193) here' },
-  { type:'section',raw:'no drums, slowdown' },
-  { type:'lyric',  raw:'I don\'t belong (G\u2193) here' },
-];
-
-function tokeniseLine(raw) {
-  const re = /\(([^)]+)\)/g;
-  const tokens = [];
-  let last = 0, m;
-  while ((m = re.exec(raw)) !== null) {
-    if (m.index > last) tokens.push({ kind:'text', val: raw.slice(last, m.index) });
-    tokens.push({ kind:'chord', val: m[1] });
-    last = m.index + m[0].length;
-  }
-  if (last < raw.length) tokens.push({ kind:'text', val: raw.slice(last) });
-  return tokens;
-}
-
-function buildSong(bpm, bpb) {
-  const barDur = (60 / bpm) * bpb;
-
-  const allTokens = [];
-  for (let li = 0; li < RAW_LINES.length; li++) {
-    const ln = RAW_LINES[li];
-    if (ln.type === 'section') {
-      allTokens.push({ kind:'section', val: ln.raw, li });
-      continue;
-    }
-    for (const tok of tokeniseLine(ln.raw)) allTokens.push({ ...tok, li });
-    allTokens.push({ kind:'newline', li });
-  }
-
-  let globalBar = 0;
-  for (const tok of allTokens) {
-    if (tok.kind === 'chord') {
-      tok.barIdx = globalBar;
-      tok.startT = globalBar * barDur;
-      tok.endT = tok.startT + barDur;
-      globalBar++;
-    }
-  }
-
-  const totalDuration = globalBar * barDur;
-  const chordBars = allTokens.filter(t => t.kind === 'chord').map(t => ({ barIdx: t.barIdx, startT: t.startT, endT: t.endT }));
-
-  for (let i = 0; i < allTokens.length; i++) {
-    const tok = allTokens[i];
-    if (tok.kind === 'text') {
-      let barIdx = -1;
-      for (let j = i - 1; j >= 0; j--) {
-        if (allTokens[j].kind === 'chord') { barIdx = allTokens[j].barIdx; break; }
-      }
-      tok.barIdx = barIdx;
-    }
-  }
-
-  return { allTokens, totalDuration, barDur, chordBars };
-}
-
+let parsedLines = [];
+let song = null;
 let bpm = 92, bpb = 4;
-let song = buildSong(bpm, bpb);
 let playing = false, startedAt = null, pausedAt = 0, raf = null;
 
-const sheet = document.getElementById('ksheet');
-const progressBar = document.getElementById('kprogressBar');
-const timeDisp = document.getElementById('ktimeDisp');
-const btnPlay = document.getElementById('kbtnPlay');
+function parseSong(raw) {
+  const lines = raw.split('\n');
+  const result = [];
+  for (let li = 0; li < lines.length; li++) {
+    let line = lines[li].trim();
+    if (!line) continue;
+    const secMatch = line.match(/^\[([^\]]+)\](.*)/);
+    if (secMatch) {
+      result.push({ type:'section', raw: secMatch[1].trim() });
+      const rest = secMatch[2].trim();
+      if (rest) result.push({ type:'lyric', raw: rest });
+    } else {
+      const hasText = line.replace(/\([^)]+\)/g,'').trim().length > 0;
+      result.push({ type: hasText ? 'lyric' : 'instr', raw: line });
+    }
+  }
+  return result;
+}
+
+function buildSong(lines, bpm, bpb) {
+  const barDur = (60 / bpm) * bpb;
+  const flat = [];
+  for (let li = 0; li < lines.length; li++) {
+    const ln = lines[li];
+    if (ln.type === 'section') {
+      flat.push({ kind:'section', val: ln.raw, li });
+      continue;
+    }
+    const re = /\(([^)]+)\)/g;
+    let last = 0, m;
+    while ((m = re.exec(ln.raw)) !== null) {
+      if (m.index > last) flat.push({ kind:'text', val: ln.raw.slice(last, m.index), li });
+      flat.push({ kind:'chord', val: m[1], li });
+      last = m.index + m[0].length;
+    }
+    if (last < ln.raw.length) flat.push({ kind:'text', val: ln.raw.slice(last), li });
+    flat.push({ kind:'newline', li });
+  }
+  let bar = 0, lastBar = -1;
+  for (const tok of flat) {
+    if (tok.kind === 'chord') {
+      tok.barIdx = bar;
+      tok.startT = bar * barDur;
+      tok.endT = tok.startT + barDur;
+      lastBar = bar;
+      bar++;
+    } else if (tok.kind === 'text') {
+      tok.barIdx = lastBar;
+    }
+  }
+  return { flat, totalDuration: bar * barDur, barDur };
+}
 
 function buildDOM() {
+  const sheet = document.getElementById('ksheet');
   sheet.innerHTML = '';
-  const lineDivs = {};
-
-  for (const tok of song.allTokens) {
+  const divs = {};
+  for (const tok of song.flat) {
     if (tok.kind === 'newline') continue;
     const li = tok.li;
-
-    if (!lineDivs[li]) {
-      const div = document.createElement('div');
-      div.className = 'kline';
-      div.id = 'kline-' + li;
-      if (tok.kind === 'section') div.classList.add('section-tag');
-      sheet.appendChild(div);
-      lineDivs[li] = div;
+    if (!divs[li]) {
+      const d = document.createElement('div');
+      d.className = 'kline';
+      d.id = 'kline-' + li;
+      if (tok.kind === 'section') d.classList.add('section-tag');
+      sheet.appendChild(d);
+      divs[li] = d;
     }
-
-    const div = lineDivs[li];
-    if (tok.kind === 'section') { div.textContent = '[' + tok.val + ']'; continue; }
-
+    if (tok.kind === 'section') {
+      divs[li].textContent = '[' + tok.val + ']';
+      continue;
+    }
     const sp = document.createElement('span');
     sp.dataset.bar = tok.barIdx;
     if (tok.kind === 'chord') {
@@ -162,16 +198,15 @@ function buildDOM() {
       sp.className = 'ktxt';
       sp.textContent = tok.val;
     }
-    div.appendChild(sp);
+    divs[li].appendChild(sp);
   }
 }
 
 function render(elapsed) {
-  timeDisp.textContent = fmt(elapsed) + ' / ' + fmt(song.totalDuration);
-  progressBar.style.width = Math.min(100, elapsed / song.totalDuration * 100).toFixed(2) + '%';
-
-  const activeBar = song.chordBars.findIndex(b => elapsed >= b.startT && elapsed < b.endT);
-
+  const sheet = document.getElementById('ksheet');
+  document.getElementById('ktimeDisp').textContent = fmt(elapsed) + ' / ' + fmt(song.totalDuration);
+  document.getElementById('kprogressBar').style.width = Math.min(100, elapsed / song.totalDuration * 100).toFixed(2) + '%';
+  const activeBar = elapsed < song.totalDuration ? Math.floor(elapsed / song.barDur) : -1;
   sheet.querySelectorAll('.kchord').forEach(el => {
     el.classList.toggle('chord-active', +el.dataset.bar === activeBar);
   });
@@ -191,64 +226,94 @@ function loop() {
   const elapsed = (performance.now() - startedAt) / 1000;
   if (elapsed >= song.totalDuration) {
     render(song.totalDuration);
-    stopPlay();
-    btnPlay.textContent = '\u21BA Replay';
+    stopPlayback();
+    document.getElementById('kbtnPlay').textContent = '\u21BA Replay';
     return;
   }
   render(elapsed);
   raf = requestAnimationFrame(loop);
 }
 
-function startPlay() {
+function startPlayback() {
   playing = true;
   startedAt = performance.now() - pausedAt * 1000;
-  btnPlay.textContent = '\u23F8 Pause';
+  document.getElementById('kbtnPlay').textContent = '\u23F8 Pause';
   raf = requestAnimationFrame(loop);
 }
 
-function stopPlay() {
+function stopPlayback() {
   playing = false;
   if (raf) cancelAnimationFrame(raf);
 }
 
-document.getElementById('kbpmSlider').addEventListener('input', function() {
-  bpm = +this.value;
-  document.getElementById('kbpmVal').textContent = bpm;
-  const was = playing;
-  if (playing) { pausedAt = (performance.now()-startedAt)/1000; stopPlay(); }
-  song = buildSong(bpm, bpb);
-  buildDOM();
-  if (was) startPlay(); else render(0);
-});
-
-document.getElementById('kbpb').addEventListener('change', function() {
-  bpb = +this.value;
-  const was = playing;
-  if (playing) { pausedAt = (performance.now()-startedAt)/1000; stopPlay(); }
-  song = buildSong(bpm, bpb);
-  buildDOM();
-  if (was) startPlay(); else render(0);
-});
-
-btnPlay.addEventListener('click', function() {
+window.togglePlay = function() {
   if (playing) {
-    pausedAt = (performance.now()-startedAt)/1000;
-    stopPlay();
-    btnPlay.textContent = '\u25B6 Resume';
+    pausedAt = (performance.now() - startedAt) / 1000;
+    stopPlayback();
+    document.getElementById('kbtnPlay').textContent = '\u25B6 Resume';
   } else {
-    if (btnPlay.textContent.includes('Replay')) pausedAt = 0;
-    startPlay();
+    const btn = document.getElementById('kbtnPlay');
+    if (btn.textContent.includes('Replay')) pausedAt = 0;
+    startPlayback();
   }
-});
+};
 
-document.getElementById('kbtnStop').addEventListener('click', function() {
-  stopPlay();
+window.stopPlay = function() {
+  stopPlayback();
   pausedAt = 0;
-  btnPlay.textContent = '\u25B6 Play';
-  render(0);
-});
+  document.getElementById('kbtnPlay').textContent = '\u25B6 Play';
+  if (song) render(0);
+};
 
-buildDOM();
-render(0);
+window.onBpmSlide = function(el) {
+  bpm = +el.value;
+  document.getElementById('kbpmVal').textContent = bpm;
+  rebuild();
+};
+
+window.onBpbChange = function(el) {
+  bpb = +el.value;
+  rebuild();
+};
+
+function rebuild() {
+  const was = playing;
+  if (playing) { pausedAt = (performance.now()-startedAt)/1000; stopPlayback(); }
+  song = buildSong(parsedLines, bpm, bpb);
+  buildDOM();
+  if (was) startPlayback(); else render(0);
+}
+
+window.loadSong = function() {
+  const raw = document.getElementById('song-input').value;
+  const errEl = document.getElementById('parse-error');
+  if (!raw.trim()) { errEl.textContent = 'Please enter some song lyrics with chords.'; return; }
+  parsedLines = parseSong(raw);
+  const chords = parsedLines.reduce((n, ln) => n + (ln.raw || '').split(/\([^)]+\)/).length - 1, 0);
+  if (chords === 0) { errEl.textContent = 'No chords found. Add chords like (G) or (Am) inline in the lyrics.'; return; }
+  errEl.textContent = '';
+  bpm = parseInt(document.getElementById('bpm-input').value) || 92;
+  bpb = parseInt(document.getElementById('bpb-input').value) || 4;
+  document.getElementById('kbpmSlider').value = bpm;
+  document.getElementById('kbpmVal').textContent = bpm;
+  document.getElementById('kbpb').value = bpb;
+  document.getElementById('song-title').textContent = document.getElementById('title-input').value;
+  song = buildSong(parsedLines, bpm, bpb);
+  pausedAt = 0;
+  stopPlayback();
+  document.getElementById('kbtnPlay').textContent = '\u25B6 Play';
+  buildDOM();
+  render(0);
+  showTab('play');
+};
+
+window.showTab = function(tab) {
+  document.getElementById('editor-pane').classList.toggle('visible', tab === 'edit');
+  document.getElementById('player-pane').classList.toggle('visible', tab === 'play');
+  document.getElementById('tab-edit').classList.toggle('active', tab === 'edit');
+  document.getElementById('tab-play').classList.toggle('active', tab === 'play');
+};
+
+loadSong();
 })();
 </script>
